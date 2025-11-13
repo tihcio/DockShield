@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Version=1.0
-Name=DockShield
+Version=0.6
+Name=DockShield (Beta)
 GenericName=Docker Backup Tool
 Comment=Backup and restore Docker containers
 Icon=com.dockshield.DockShield

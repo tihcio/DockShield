@@ -56,9 +56,9 @@
   </provides>
 
   <releases>
-    <release version="1.0.0" date="2024-01-15">
+    <release version="0.6.0" date="2024-11-13">
       <description>
-        <p>Initial release of DockShield</p>
+        <p>Beta release of DockShield</p>
         <ul>
           <li>Full and filesystem-only backup modes</li>
           <li>Container restore with configuration preservation</li>

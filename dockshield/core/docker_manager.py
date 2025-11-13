@@ -104,12 +104,26 @@ class DockerManager:
             container.reload()
             attrs = container.attrs
 
+            # Get image info - handle case where image is missing
+            image_name = "Unknown (image deleted)"
+            try:
+                if container.image:
+                    if container.image.tags:
+                        image_name = container.image.tags[0]
+                    else:
+                        image_name = container.image.id
+            except (NotFound, APIError) as e:
+                # Image no longer exists
+                image_id_from_config = attrs.get("Config", {}).get("Image", "unknown")
+                image_name = f"{image_id_from_config} (deleted)"
+                logger.debug(f"Container {container.name} references missing image: {image_id_from_config}")
+
             return {
                 "id": container.id,
                 "short_id": container.short_id,
                 "name": container.name,
                 "status": container.status,
-                "image": container.image.tags[0] if container.image.tags else container.image.id,
+                "image": image_name,
                 "created": attrs.get("Created"),
                 "started": attrs.get("State", {}).get("StartedAt"),
                 "ports": attrs.get("NetworkSettings", {}).get("Ports", {}),
@@ -120,8 +134,14 @@ class DockerManager:
                 "networks": list(attrs.get("NetworkSettings", {}).get("Networks", {}).keys()),
             }
         except Exception as e:
-            logger.error(f"Error getting container info: {e}")
-            return {}
+            logger.error(f"Error getting container info for {container.name}: {e}")
+            return {
+                "id": container.id,
+                "short_id": container.short_id,
+                "name": container.name,
+                "status": "error",
+                "image": "Error loading info",
+            }
 
     def get_container_logs(self, container: Container, lines: int = 1000) -> str:
         """

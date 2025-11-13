@@ -8,11 +8,18 @@ import tarfile
 import gzip
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Tuple
 import logging
 
 from dockshield.core.docker_manager import DockerManager
 from dockshield.core.backup_manager import BackupManager
+from dockshield.core.exceptions import (
+    RestoreException,
+    ContainerExistsException,
+    ImageNotFoundException,
+    BackupNotFoundException,
+    FilesystemRestoreException,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +44,7 @@ class RestoreManager:
         new_name: Optional[str] = None,
         override_config: Optional[Dict[str, Any]] = None,
         start_after_restore: bool = True,
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
         Restore container from backup
 
@@ -48,7 +55,9 @@ class RestoreManager:
             start_after_restore: Start container after restore
 
         Returns:
-            Container ID if successful, None otherwise
+            Tuple of (container_id, error_message)
+            - If successful: (container_id, None)
+            - If failed: (None, error_message)
         """
         try:
             logger.info(f"Starting restore from backup: {backup_id}")
@@ -56,25 +65,34 @@ class RestoreManager:
             # Get backup metadata
             metadata = self.backup_manager.get_backup_metadata(backup_id)
             if not metadata:
-                logger.error(f"Backup not found: {backup_id}")
-                return None
+                error_msg = f"Backup non trovato: {backup_id}"
+                logger.error(error_msg)
+                raise BackupNotFoundException(error_msg)
 
             backup_path = Path(metadata["backup_path"])
             backup_type = metadata["backup_type"]
             original_container_info = metadata["container_info"]
 
+            # Verify backup path exists
+            if not backup_path.exists():
+                error_msg = f"Directory backup non trovata: {backup_path}"
+                logger.error(error_msg)
+                raise BackupNotFoundException(error_msg)
+
             # Determine container name
             container_name = new_name or original_container_info["name"]
+            logger.info(f"Ripristinando container con nome: {container_name}")
 
             # Check if container with same name already exists
             existing_container = self.docker_manager.get_container(container_name)
             if existing_container:
-                logger.error(f"Container with name '{container_name}' already exists")
-                return None
+                error_msg = f"Un container con nome '{container_name}' esiste già. Usa un nome diverso o rimuovi il container esistente."
+                logger.error(error_msg)
+                raise ContainerExistsException(error_msg)
 
             # Restore based on backup type
             if backup_type == "full":
-                return self._restore_full_backup(
+                container_id = self._restore_full_backup(
                     backup_path,
                     metadata,
                     container_name,
@@ -82,7 +100,7 @@ class RestoreManager:
                     start_after_restore,
                 )
             elif backup_type == "filesystem":
-                return self._restore_filesystem_backup(
+                container_id = self._restore_filesystem_backup(
                     backup_path,
                     metadata,
                     container_name,
@@ -90,12 +108,23 @@ class RestoreManager:
                     start_after_restore,
                 )
             else:
-                logger.error(f"Unknown backup type: {backup_type}")
-                return None
+                error_msg = f"Tipo backup sconosciuto: {backup_type}"
+                logger.error(error_msg)
+                raise RestoreException(error_msg)
 
+            if container_id:
+                logger.info(f"Ripristino completato con successo: {container_id}")
+                return (container_id, None)
+            else:
+                return (None, "Ripristino fallito senza errore specifico")
+
+        except (BackupNotFoundException, ContainerExistsException, ImageNotFoundException) as e:
+            logger.error(f"Errore durante ripristino: {e}")
+            return (None, str(e))
         except Exception as e:
-            logger.error(f"Error restoring container: {e}", exc_info=True)
-            return None
+            error_msg = f"Errore imprevisto durante ripristino: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return (None, error_msg)
 
     def _restore_full_backup(
         self,
@@ -108,21 +137,64 @@ class RestoreManager:
         """Restore container from full backup"""
         try:
             container_info = metadata["container_info"]
+            original_image_name = container_info["image"]
 
             # Load container image
+            loaded_image_id = None
             image_archive = backup_path / "image.tar.gz"
             if image_archive.exists():
-                logger.info("Restoring container image...")
+                logger.info(f"Restoring container image (original: {original_image_name})...")
 
                 # Decompress image
                 with tempfile.TemporaryDirectory() as temp_dir:
                     temp_image_path = Path(temp_dir) / "image.tar"
-                    self._decompress_file(image_archive, temp_image_path)
+                    if not self._decompress_file(image_archive, temp_image_path):
+                        raise RestoreException("Failed to decompress image archive")
 
-                    # Load image
+                    # Load image - returns list of loaded images
                     if not self.docker_manager.load_image(str(temp_image_path)):
-                        logger.error("Failed to load container image")
-                        return None
+                        raise RestoreException("Failed to load container image from tar")
+
+                    logger.info("Image loaded successfully")
+
+                    # Get the loaded image - Docker might have loaded it without tags
+                    # We need to find it and potentially retag it
+                    try:
+                        # Try to get by original name first
+                        loaded_image = self.docker_manager.get_image(original_image_name)
+                        if loaded_image:
+                            loaded_image_id = original_image_name
+                            logger.info(f"Found loaded image with original name: {original_image_name}")
+                        else:
+                            # Image was loaded but without tag - need to find it by ID
+                            # List recent images and use the first one (just loaded)
+                            images = self.docker_manager.client.images.list()
+                            if images:
+                                # Get the most recently created untagged image
+                                for img in images:
+                                    if not img.tags:  # Untagged image
+                                        loaded_image_id = img.id
+                                        logger.info(f"Using untagged image ID: {loaded_image_id}")
+                                        # Tag it with original name for easier management
+                                        try:
+                                            img.tag(original_image_name)
+                                            loaded_image_id = original_image_name
+                                            logger.info(f"Tagged image as: {original_image_name}")
+                                        except Exception as e:
+                                            logger.warning(f"Could not tag image: {e}")
+                                        break
+
+                                if not loaded_image_id and images:
+                                    # Fallback: use first image ID
+                                    loaded_image_id = images[0].id
+                                    logger.warning(f"Using fallback image ID: {loaded_image_id}")
+
+                        if not loaded_image_id:
+                            raise RestoreException("Could not find loaded image")
+
+                    except Exception as e:
+                        logger.error(f"Error finding loaded image: {e}")
+                        raise RestoreException(f"Could not identify loaded image: {e}")
 
             # Load container configuration
             config_file = backup_path / "container_config.json"
@@ -135,6 +207,11 @@ class RestoreManager:
             # Apply configuration overrides
             if override_config:
                 container_config.update(override_config)
+
+            # IMPORTANT: Use the loaded image ID, not the name from config
+            if loaded_image_id:
+                container_config["image"] = loaded_image_id
+                logger.info(f"Will create container with image: {loaded_image_id}")
 
             # Extract environment variables
             env_dict = {}
@@ -168,20 +245,27 @@ class RestoreManager:
                                 ports[container_port] = int(host_port)
 
             # Create container
-            logger.info(f"Creating container '{container_name}'...")
-            container = self.docker_manager.create_container(
-                image=container_config["image"],
-                name=container_name,
-                environment=env_dict,
-                volumes=volumes,
-                ports=ports,
-                labels=container_config.get("labels", {}),
-                detach=True,
-            )
+            logger.info(f"Creating container '{container_name}' with image '{container_config['image']}'...")
+            try:
+                container = self.docker_manager.create_container(
+                    image=container_config["image"],
+                    name=container_name,
+                    environment=env_dict,
+                    volumes=volumes,
+                    ports=ports,
+                    labels=container_config.get("labels", {}),
+                    detach=True,
+                )
 
-            if not container:
-                logger.error("Failed to create container")
-                return None
+                if not container:
+                    raise RestoreException("create_container returned None")
+
+                logger.info(f"Container created successfully: {container.id}")
+
+            except Exception as e:
+                error_msg = f"Failed to create container: {e}"
+                logger.error(error_msg)
+                raise RestoreException(error_msg)
 
             # Restore filesystem data
             filesystem_archive = backup_path / "filesystem.tar.gz"
@@ -199,9 +283,13 @@ class RestoreManager:
             logger.info(f"Container restored successfully: {container.id}")
             return container.id
 
+        except RestoreException:
+            # Re-raise RestoreException to be caught by restore_container()
+            raise
         except Exception as e:
-            logger.error(f"Error restoring full backup: {e}", exc_info=True)
-            return None
+            error_msg = f"Errore imprevisto durante ripristino full backup: {e}"
+            logger.error(error_msg, exc_info=True)
+            raise RestoreException(error_msg)
 
     def _restore_filesystem_backup(
         self,
@@ -258,33 +346,75 @@ class RestoreManager:
             logger.info(f"Container restored successfully: {container.id}")
             return container.id
 
+        except RestoreException:
+            # Re-raise RestoreException to be caught by restore_container()
+            raise
         except Exception as e:
-            logger.error(f"Error restoring filesystem backup: {e}", exc_info=True)
-            return None
+            error_msg = f"Errore imprevisto durante ripristino filesystem backup: {e}"
+            logger.error(error_msg, exc_info=True)
+            raise RestoreException(error_msg)
 
     def _restore_filesystem_data(self, container, filesystem_archive: Path) -> bool:
-        """Restore filesystem data to container"""
+        """
+        Restore filesystem data to container
+
+        Args:
+            container: Docker container object
+            filesystem_archive: Path to filesystem.tar.gz
+
+        Returns:
+            True if successful, False otherwise
+
+        Raises:
+            FilesystemRestoreException: If restore fails
+        """
         try:
+            logger.info("Decomprimendo archivio filesystem...")
+
             # Decompress filesystem archive
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_tar_path = Path(temp_dir) / "filesystem.tar"
-                self._decompress_file(filesystem_archive, temp_tar_path)
 
-                # Import filesystem to container
-                with open(temp_tar_path, "rb") as f:
-                    # Note: Docker API doesn't have a direct import method
-                    # This would require using docker cp or volume mounting
-                    # For now, we'll log a warning
-                    logger.warning("Filesystem data restoration requires manual intervention")
-                    logger.warning("Use: docker cp to copy data to the container")
+                if not self._decompress_file(filesystem_archive, temp_tar_path):
+                    raise FilesystemRestoreException("Decompressione archivio fallita")
 
-                    # Alternative: commit current state and use it
-                    # This is a simplified approach
+                logger.info(f"Archivio decompresso: {temp_tar_path} ({temp_tar_path.stat().st_size} bytes)")
+
+                # Verify tar file is valid
+                try:
+                    with tarfile.open(temp_tar_path, 'r') as tar:
+                        members = tar.getmembers()
+                        logger.info(f"Archivio contiene {len(members)} file/directory")
+                except tarfile.TarError as e:
+                    raise FilesystemRestoreException(f"Archivio tar non valido: {e}")
+
+                # Put archive into container at root (/)
+                # This extracts the filesystem backup into the container
+                logger.info("Ripristinando filesystem nel container...")
+
+                try:
+                    with open(temp_tar_path, "rb") as f:
+                        # put_archive extracts the tar archive into the container
+                        # path='/' means extract at root, preserving directory structure
+                        success = container.put_archive(path='/', data=f)
+
+                        if not success:
+                            raise FilesystemRestoreException("put_archive ha ritornato False")
+
+                    logger.info("Filesystem ripristinato con successo nel container")
                     return True
 
+                except Exception as e:
+                    error_msg = f"Errore durante put_archive: {e}"
+                    logger.error(error_msg, exc_info=True)
+                    raise FilesystemRestoreException(error_msg)
+
+        except FilesystemRestoreException:
+            raise
         except Exception as e:
-            logger.error(f"Error restoring filesystem data: {e}")
-            return False
+            error_msg = f"Errore imprevisto durante ripristino filesystem: {e}"
+            logger.error(error_msg, exc_info=True)
+            raise FilesystemRestoreException(error_msg)
 
     def _decompress_file(self, input_path: Path, output_path: Path) -> bool:
         """Decompress gzip file"""

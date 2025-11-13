@@ -22,6 +22,7 @@ from dockshield.utils.notifications import NotificationManager
 from dockshield.ui.backup_dialog import BackupDialog
 from dockshield.ui.restore_dialog import RestoreDialog
 from dockshield.ui.history_dialog import HistoryDialog
+from dockshield.ui.settings_dialog import SettingsDialog
 
 logger = logging.getLogger(__name__)
 
@@ -387,33 +388,65 @@ class MainWindow(QMainWindow):
 
     def _perform_restore(self, options: dict) -> None:
         """Perform restore operation"""
+        container_name = options.get("container_name", "unknown")
+
         try:
             backup_id = options.get("backup_id")
-            container_name = options.get("container_name")
 
-            self.status_label.setText(f"Restoring {container_name}...")
+            self.status_label.setText(f"Ripristino {container_name} in corso...")
             self.notification_manager.notify_restore_started(container_name)
 
-            container_id = self.restore_manager.restore_container(
+            # Il metodo restore_container ora ritorna (container_id, error_message)
+            container_id, error_message = self.restore_manager.restore_container(
                 backup_id=backup_id,
                 new_name=options.get("new_name"),
                 start_after_restore=options.get("start_after_restore", True),
             )
 
-            if container_id:
+            if container_id and not error_message:
+                # Successo
                 self.notification_manager.notify_restore_completed(container_name)
-                self.status_label.setText("Restore completed")
-                QMessageBox.information(self, "Restore Complete", f"Container restored: {container_id}")
+                self.status_label.setText("Ripristino completato")
+                QMessageBox.information(
+                    self,
+                    "Ripristino Completato",
+                    f"Container ripristinato con successo!\n\n"
+                    f"ID: {container_id}\n"
+                    f"Nome: {options.get('new_name') or container_name}"
+                )
                 self.refresh_containers()
             else:
-                self.notification_manager.notify_restore_failed(container_name, "Unknown error")
-                self.status_label.setText("Restore failed")
-                QMessageBox.critical(self, "Restore Failed", "Failed to restore container")
+                # Fallimento
+                error_details = error_message or "Errore sconosciuto durante il ripristino"
+                logger.error(f"Restore failed: {error_details}")
+
+                self.notification_manager.notify_restore_failed(container_name, error_details)
+                self.status_label.setText("Ripristino fallito")
+
+                QMessageBox.critical(
+                    self,
+                    "Ripristino Fallito",
+                    f"Impossibile ripristinare il container.\n\n"
+                    f"Errore: {error_details}\n\n"
+                    f"Controlla i log per maggiori dettagli:\n"
+                    f"{self.config.get_log_file()}"
+                )
 
         except Exception as e:
-            logger.error(f"Error restoring container: {e}")
-            self.notification_manager.notify_restore_failed(container_name, str(e))
-            QMessageBox.critical(self, "Restore Error", f"Error: {e}")
+            # Errore imprevisto
+            error_msg = f"Errore imprevisto: {str(e)}"
+            logger.error(f"Unexpected error during restore: {e}", exc_info=True)
+
+            self.notification_manager.notify_restore_failed(container_name, error_msg)
+            self.status_label.setText("Errore durante ripristino")
+
+            QMessageBox.critical(
+                self,
+                "Errore Ripristino",
+                f"Si è verificato un errore imprevisto:\n\n"
+                f"{error_msg}\n\n"
+                f"Dettagli nei log: {self.config.get_log_file()}"
+            )
 
     def show_history(self) -> None:
         """Show backup history"""
@@ -422,15 +455,32 @@ class MainWindow(QMainWindow):
 
     def show_settings(self) -> None:
         """Show settings dialog"""
-        QMessageBox.information(self, "Settings", "Settings dialog not yet implemented")
+        dialog = SettingsDialog(self.config, self)
+        if dialog.exec():
+            # Settings were saved, show restart recommendation
+            reply = QMessageBox.question(
+                self,
+                "Restart Required",
+                "Some settings require a restart to take effect.\n\n"
+                "Would you like to restart DockShield now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                # Close and restart
+                self.close()
+                import sys
+                import os
+                os.execv(sys.executable, [sys.executable] + sys.argv)
 
     def show_about(self) -> None:
         """Show about dialog"""
         QMessageBox.about(
             self,
             "About DockShield",
-            "<h2>DockShield 1.0.0</h2>"
+            "<h2>DockShield 0.6.0 Beta</h2>"
             "<p>Docker Container Backup and Restore for KDE Plasma</p>"
+            "<p><b>This is a beta version - use with caution!</b></p>"
             "<p>Copyright © 2024 DockShield Team</p>"
             "<p>Licensed under GPL-3.0</p>"
         )
