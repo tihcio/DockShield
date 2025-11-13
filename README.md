@@ -53,6 +53,29 @@
 
 ## Installazione
 
+### Flatpak (Raccomandato per utenti finali)
+
+```bash
+# Build e installa da sorgente
+cd dockshield/flatpak
+chmod +x build-flatpak.sh
+./build-flatpak.sh
+
+# Installa
+flatpak install --user flatpak-repo com.dockshield.DockShield
+
+# Esegui
+flatpak run com.dockshield.DockShield
+```
+
+**Vantaggi Flatpak:**
+- ✅ Funziona su tutte le distribuzioni Linux
+- ✅ Dipendenze incluse, nessun conflitto
+- ✅ Installazione pulita e isolata
+- ✅ Facile disinstallazione
+
+Vedi [flatpak/QUICK-START.md](flatpak/QUICK-START.md) per dettagli completi.
+
 ### Da Sorgente
 
 ```bash

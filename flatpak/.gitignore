@@ -1,0 +1,10 @@
+# Flatpak build artifacts
+flatpak-build/
+flatpak-repo/
+.flatpak-builder/
+*.flatpak
+*.flatpakref
+
+# Build cache
+.flatpak-cache/
+builddir/

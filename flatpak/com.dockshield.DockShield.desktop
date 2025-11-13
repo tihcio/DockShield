@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=DockShield
+GenericName=Docker Backup Tool
+Comment=Backup and restore Docker containers
+Icon=com.dockshield.DockShield
+Exec=dockshield
+Terminal=false
+Categories=System;Utility;Qt;KDE;
+Keywords=docker;backup;restore;container;kde;
+StartupNotify=true
+StartupWMClass=dockshield
+X-Flatpak-RenamedFrom=dockshield.desktop;

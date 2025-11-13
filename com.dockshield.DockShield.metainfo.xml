@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2024 DockShield Team -->
+<component type="desktop-application">
+  <id>com.dockshield.DockShield</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>DockShield</name>
+  <summary>Docker Container Backup and Restore for KDE Plasma</summary>
+
+  <description>
+    <p>
+      DockShield is a powerful desktop application for KDE Plasma that allows you to easily
+      backup and restore Docker containers with an intuitive graphical interface.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Backup Docker containers with full or filesystem-only modes</li>
+      <li>Automatic scheduled backups with cron-style scheduler</li>
+      <li>Multiple storage backends: Local, NFS, SSH/SFTP, AWS S3</li>
+      <li>Native KDE notifications for backup and restore operations</li>
+      <li>Complete backup history with detailed information</li>
+      <li>Configurable compression levels</li>
+      <li>Integrity verification with SHA256 checksums</li>
+      <li>Dark and light theme support</li>
+    </ul>
+    <p>
+      DockShield integrates seamlessly with KDE Plasma, providing a native look and feel
+      while offering powerful backup and restore capabilities for your Docker containers.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">com.dockshield.DockShield.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main window showing Docker containers</caption>
+      <!-- <image>https://example.com/screenshots/main-window.png</image> -->
+    </screenshot>
+    <screenshot>
+      <caption>Backup configuration dialog</caption>
+      <!-- <image>https://example.com/screenshots/backup-dialog.png</image> -->
+    </screenshot>
+    <screenshot>
+      <caption>Backup history view</caption>
+      <!-- <image>https://example.com/screenshots/history.png</image> -->
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://github.com/yourusername/dockshield</url>
+  <url type="bugtracker">https://github.com/yourusername/dockshield/issues</url>
+  <url type="help">https://github.com/yourusername/dockshield/wiki</url>
+
+  <provides>
+    <binary>dockshield</binary>
+  </provides>
+
+  <releases>
+    <release version="1.0.0" date="2024-01-15">
+      <description>
+        <p>Initial release of DockShield</p>
+        <ul>
+          <li>Full and filesystem-only backup modes</li>
+          <li>Container restore with configuration preservation</li>
+          <li>Automatic backup scheduler</li>
+          <li>Multiple storage backend support</li>
+          <li>KDE Plasma integration with native notifications</li>
+          <li>Backup history and management</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <content_rating type="oars-1.1" />
+
+  <developer_name>DockShield Team</developer_name>
+  <update_contact>info@dockshield.org</update_contact>
+
+  <keywords>
+    <keyword>docker</keyword>
+    <keyword>backup</keyword>
+    <keyword>restore</keyword>
+    <keyword>container</keyword>
+    <keyword>kde</keyword>
+    <keyword>plasma</keyword>
+  </keywords>
+
+  <categories>
+    <category>System</category>
+    <category>Utility</category>
+  </categories>
+
+  <requires>
+    <display_length compare="ge">800</display_length>
+  </requires>
+
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+</component>
