@@ -1,0 +1,183 @@
+# DockShield Configuration Example
+# Copy this file to ~/.config/dockshield/config.yml and customize
+
+# General settings
+general:
+  # Default backup directory
+  backup_dir: "/var/backups/dockshield"
+
+  # Compression level (0-9, 0=none, 9=maximum)
+  compression_level: 6
+
+  # Keep backup history (days)
+  retention_days: 30
+
+  # Maximum concurrent backup jobs
+  max_concurrent_jobs: 2
+
+  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  log_level: "INFO"
+
+  # Log file location
+  log_file: "~/.local/share/dockshield/dockshield.log"
+
+# Docker settings
+docker:
+  # Docker socket path
+  socket: "unix:///var/run/docker.sock"
+
+  # Docker API version (leave empty for auto-detect)
+  api_version: ""
+
+  # Timeout for Docker operations (seconds)
+  timeout: 300
+
+# Backup settings
+backup:
+  # Default backup type: "filesystem", "full"
+  default_type: "full"
+
+  # Include container logs in backup
+  include_logs: true
+
+  # Maximum log size to include (MB)
+  max_log_size: 100
+
+  # Verify backup integrity after creation
+  verify_backup: true
+
+  # Exclude patterns (glob patterns)
+  exclude_patterns:
+    - "*.tmp"
+    - "*.log"
+    - ".cache/*"
+
+# Storage backends
+storage:
+  # Local storage
+  local:
+    enabled: true
+    path: "/var/backups/dockshield"
+
+  # NFS storage
+  nfs:
+    enabled: false
+    server: "nfs.example.com"
+    export_path: "/exports/backups"
+    mount_point: "/mnt/nfs_backups"
+    mount_options: "vers=4,rw"
+
+  # SSH/SFTP storage
+  ssh:
+    enabled: false
+    host: "backup.example.com"
+    port: 22
+    username: "backup_user"
+    # Use key-based authentication (recommended)
+    key_file: "~/.ssh/id_rsa"
+    # Or password (not recommended, use key instead)
+    # password: "your_password"
+    remote_path: "/backups/dockshield"
+
+  # AWS S3
+  s3:
+    enabled: false
+    bucket: "my-docker-backups"
+    region: "us-east-1"
+    # AWS credentials (or use IAM role/env vars)
+    # access_key_id: "YOUR_ACCESS_KEY"
+    # secret_access_key: "YOUR_SECRET_KEY"
+    prefix: "dockshield/"
+    storage_class: "STANDARD_IA"
+
+# Scheduler settings
+scheduler:
+  # Enable automatic backups
+  enabled: false
+
+  # Scheduled backup jobs
+  jobs:
+    - name: "daily_backup"
+      enabled: true
+      # Cron-style schedule: minute hour day month weekday
+      schedule: "0 2 * * *"  # Every day at 2:00 AM
+      containers:
+        - "container1"
+        - "container2"
+      backup_type: "full"
+      storage_backend: "local"
+      retention_days: 7
+
+    - name: "weekly_full_backup"
+      enabled: true
+      schedule: "0 3 * * 0"  # Every Sunday at 3:00 AM
+      containers: "all"  # Backup all containers
+      backup_type: "full"
+      storage_backend: "s3"
+      retention_days: 30
+
+# Notifications
+notifications:
+  # Enable desktop notifications
+  desktop_enabled: true
+
+  # Notify on successful backups
+  notify_success: true
+
+  # Notify on backup failures
+  notify_failure: true
+
+  # Notification sound
+  sound_enabled: true
+
+  # Email notifications (optional)
+  email:
+    enabled: false
+    smtp_server: "smtp.example.com"
+    smtp_port: 587
+    use_tls: true
+    username: "notifications@example.com"
+    password: "your_password"
+    from_address: "dockshield@example.com"
+    to_addresses:
+      - "admin@example.com"
+
+# UI settings
+ui:
+  # Theme: "auto", "light", "dark"
+  theme: "auto"
+
+  # Language (ISO 639-1 code)
+  language: "en"
+
+  # Window geometry
+  window:
+    width: 1200
+    height: 800
+    remember_position: true
+
+  # Refresh interval for container list (seconds)
+  refresh_interval: 5
+
+  # Show system tray icon
+  system_tray: true
+
+  # Minimize to tray on close
+  minimize_to_tray: true
+
+# Advanced settings
+advanced:
+  # Enable debug mode
+  debug: false
+
+  # Use sudo for Docker commands (if user not in docker group)
+  use_sudo: false
+
+  # Custom Docker command path
+  docker_command: "/usr/bin/docker"
+
+  # Parallel compression threads
+  compression_threads: 4
+
+  # Buffer size for file operations (bytes)
+  buffer_size: 8388608  # 8MB
