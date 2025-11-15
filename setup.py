@@ -14,7 +14,7 @@ long_description = readme_file.read_text(encoding="utf-8") if readme_file.exists
 setup(
     name="dockshield",
     version="0.6.0",
-    author="DockShield Team",
+    author="Tiziano Angeli",
     author_email="info@dockshield.org",
     description="Docker container backup and restore tool for KDE Plasma",
     long_description=long_description,

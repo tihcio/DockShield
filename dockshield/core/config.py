@@ -21,9 +21,6 @@ class Config:
 
     DEFAULT_CONFIG = {
         "general": {
-            "backup_dir": "/var/backups/dockshield",
-            "compression_level": 6,
-            "retention_days": 30,
             "max_concurrent_jobs": 2,
             "log_level": "INFO",
             "log_file": "~/.local/share/dockshield/dockshield.log",
@@ -34,10 +31,17 @@ class Config:
             "timeout": 300,
         },
         "backup": {
+            "directory": "/var/backups/dockshield",
+            "compression_level": 6,
+            "retention": {
+                "count": 10,
+                "days": 30,
+            },
             "default_type": "full",
             "include_logs": True,
             "max_log_size": 100,
-            "verify_backup": True,
+            "verify_integrity": True,
+            "include_stopped": False,
             "exclude_patterns": ["*.tmp", "*.log", ".cache/*"],
         },
         "storage": {
@@ -58,7 +62,7 @@ class Config:
         },
         "ui": {
             "theme": "auto",
-            "language": "en",
+            "language": "auto",
             "window": {
                 "width": 1200,
                 "height": 800,
@@ -137,7 +141,7 @@ class Config:
         Get configuration value using dot notation
 
         Args:
-            key: Configuration key (e.g., "general.backup_dir")
+            key: Configuration key (e.g., "backup.directory")
             default: Default value if key not found
 
         Returns:
@@ -159,7 +163,7 @@ class Config:
         Set configuration value using dot notation
 
         Args:
-            key: Configuration key (e.g., "general.backup_dir")
+            key: Configuration key (e.g., "backup.directory")
             value: Value to set
         """
         keys = key.split(".")
@@ -209,7 +213,9 @@ class Config:
 
     def get_backup_dir(self) -> Path:
         """Get backup directory as Path object"""
-        return self.expand_path(self.get("general.backup_dir"))
+        # Try new location first, fallback to old for backwards compatibility
+        backup_dir = self.get("backup.directory") or self.get("general.backup_dir", "/var/backups/dockshield")
+        return self.expand_path(backup_dir)
 
     def get_log_file(self) -> Path:
         """Get log file path as Path object"""

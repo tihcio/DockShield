@@ -3,7 +3,7 @@ DockShield - Docker Container Backup and Restore for KDE Plasma
 """
 
 __version__ = "0.6.0"
-__author__ = "DockShield Team"
+__author__ = "Tiziano Angeli"
 __license__ = "GPL-3.0"
 
 from dockshield.core.config import Config

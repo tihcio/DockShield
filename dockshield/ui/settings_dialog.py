@@ -7,12 +7,13 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
     QLabel, QLineEdit, QSpinBox, QCheckBox, QComboBox,
     QPushButton, QGroupBox, QFormLayout, QFileDialog,
-    QMessageBox, QTextEdit
+    QMessageBox, QTextEdit, QListWidget, QListWidgetItem
 )
 from PyQt6.QtCore import Qt
 import logging
 
 from dockshield.core.config import Config
+from dockshield.core.docker_manager import DockerManager
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +21,18 @@ logger = logging.getLogger(__name__)
 class SettingsDialog(QDialog):
     """Settings dialog"""
 
-    def __init__(self, config: Config, parent=None):
+    def __init__(self, config: Config, parent=None, docker_manager: Optional[DockerManager] = None):
         """
         Initialize settings dialog
 
         Args:
             config: Application configuration
             parent: Parent widget
+            docker_manager: Docker manager instance (optional)
         """
         super().__init__(parent)
         self.config = config
+        self.docker_manager = docker_manager
         self.setWindowTitle("DockShield Settings")
         self.setMinimumSize(700, 600)
         self.setModal(True)
@@ -63,17 +66,14 @@ class SettingsDialog(QDialog):
 
         button_layout.addStretch()
 
-        self.save_button = QPushButton("Save")
-        self.save_button.clicked.connect(self.save_settings)
-        button_layout.addWidget(self.save_button)
+        self.ok_button = QPushButton("OK")
+        self.ok_button.clicked.connect(self.save_and_close)
+        self.ok_button.setDefault(True)
+        button_layout.addWidget(self.ok_button)
 
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self.reject)
         button_layout.addWidget(self.cancel_button)
-
-        self.apply_button = QPushButton("Apply")
-        self.apply_button.clicked.connect(self.apply_settings)
-        button_layout.addWidget(self.apply_button)
 
     def _create_docker_tab(self) -> QWidget:
         """Create Docker settings tab"""
@@ -211,13 +211,23 @@ class SettingsDialog(QDialog):
         layout.addWidget(container_group)
 
         self.auto_backup_all = QCheckBox("Backup all running containers")
+        self.auto_backup_all.toggled.connect(self._on_backup_all_toggled)
         container_layout.addWidget(self.auto_backup_all)
 
-        container_layout.addWidget(QLabel("Container Names (one per line, leave empty for all):"))
-        self.auto_backup_containers = QTextEdit()
-        self.auto_backup_containers.setMaximumHeight(100)
-        self.auto_backup_containers.setPlaceholderText("container1\ncontainer2\ncontainer3")
-        container_layout.addWidget(self.auto_backup_containers)
+        # Header with refresh button
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(QLabel("Select containers to backup:"))
+        header_layout.addStretch()
+
+        self.refresh_containers_btn = QPushButton("Refresh List")
+        self.refresh_containers_btn.clicked.connect(self._load_available_containers)
+        header_layout.addWidget(self.refresh_containers_btn)
+        container_layout.addLayout(header_layout)
+
+        # List of containers with checkboxes
+        self.containers_list = QListWidget()
+        self.containers_list.setMaximumHeight(150)
+        container_layout.addWidget(self.containers_list)
 
         layout.addStretch()
         return widget
@@ -296,6 +306,11 @@ class SettingsDialog(QDialog):
         self.theme = QComboBox()
         self.theme.addItems(["Auto (System)", "Light", "Dark"])
         group_layout.addRow("Theme:", self.theme)
+
+        # Language selector
+        self.language = QComboBox()
+        self.language.addItems(["Auto (System)", "English", "Italiano"])
+        group_layout.addRow("Language:", self.language)
 
         self.show_system_tray = QCheckBox("Show system tray icon")
         group_layout.addRow("", self.show_system_tray)
@@ -389,9 +404,19 @@ class SettingsDialog(QDialog):
         backup_type = scheduler_config.get("backup_type", "full")
         self.backup_type.setCurrentText("Full Backup" if backup_type == "full" else "Filesystem Only")
 
+        # Load available containers first
+        self._load_available_containers()
+
+        # Load selected containers from config
         containers = scheduler_config.get("containers", [])
-        self.auto_backup_containers.setPlainText("\n".join(containers))
         self.auto_backup_all.setChecked(len(containers) == 0)
+
+        # Check the containers that are in the config
+        for i in range(self.containers_list.count()):
+            item = self.containers_list.item(i)
+            container_name = item.data(Qt.ItemDataRole.UserRole)
+            if container_name in containers:
+                item.setCheckState(Qt.CheckState.Checked)
 
         # Storage
         storage_config = self.config.get("storage", {})
@@ -415,6 +440,11 @@ class SettingsDialog(QDialog):
         theme = ui_config.get("theme", "auto")
         theme_map = {"auto": "Auto (System)", "light": "Light", "dark": "Dark"}
         self.theme.setCurrentText(theme_map.get(theme, "Auto (System)"))
+
+        # Language
+        language = ui_config.get("language", "auto")
+        language_map = {"auto": "Auto (System)", "en": "English", "it": "Italiano"}
+        self.language.setCurrentText(language_map.get(language, "Auto (System)"))
 
         self.refresh_interval.setValue(ui_config.get("refresh_interval", 5))
         self.show_system_tray.setChecked(ui_config.get("system_tray", True))
@@ -440,6 +470,7 @@ class SettingsDialog(QDialog):
         self._on_scheduler_toggled(self.scheduler_enabled.isChecked())
         self._on_notifications_toggled(self.notifications_enabled.isChecked())
         self._on_storage_type_changed(self.storage_type.currentText())
+        self._on_backup_all_toggled(self.auto_backup_all.isChecked())
 
     def _save_to_config(self) -> bool:
         """Save settings to configuration"""
@@ -457,12 +488,20 @@ class SettingsDialog(QDialog):
 
             # Scheduler
             backup_type = "full" if self.backup_type.currentText() == "Full Backup" else "filesystem"
-            containers = [c.strip() for c in self.auto_backup_containers.toPlainText().split("\n") if c.strip()]
+
+            # Get selected containers from the list
+            containers = []
+            if not self.auto_backup_all.isChecked():
+                for i in range(self.containers_list.count()):
+                    item = self.containers_list.item(i)
+                    if item.checkState() == Qt.CheckState.Checked:
+                        container_name = item.data(Qt.ItemDataRole.UserRole)
+                        containers.append(container_name)
 
             self.config.set("scheduler.enabled", self.scheduler_enabled.isChecked())
             self.config.set("scheduler.cron_expression", self.schedule_cron.text())
             self.config.set("scheduler.backup_type", backup_type)
-            self.config.set("scheduler.containers", containers if not self.auto_backup_all.isChecked() else [])
+            self.config.set("scheduler.containers", containers)
 
             # Storage
             type_map = {"Local": "local", "NFS": "nfs", "SSH/SFTP": "ssh", "AWS S3": "s3"}
@@ -480,6 +519,11 @@ class SettingsDialog(QDialog):
             # UI
             theme_map = {"Auto (System)": "auto", "Light": "light", "Dark": "dark"}
             self.config.set("ui.theme", theme_map.get(self.theme.currentText(), "auto"))
+
+            # Language
+            language_map = {"Auto (System)": "auto", "English": "en", "Italiano": "it"}
+            self.config.set("ui.language", language_map.get(self.language.currentText(), "auto"))
+
             self.config.set("ui.refresh_interval", self.refresh_interval.value())
             self.config.set("ui.system_tray", self.show_system_tray.isChecked())
             self.config.set("ui.minimize_to_tray", self.minimize_to_tray.isChecked())
@@ -505,25 +549,9 @@ class SettingsDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Failed to save settings:\n{e}")
             return False
 
-    def apply_settings(self) -> None:
-        """Apply settings without closing"""
+    def save_and_close(self) -> None:
+        """Save settings and close dialog"""
         if self._save_to_config():
-            QMessageBox.information(
-                self,
-                "Settings Applied",
-                "Settings have been saved.\n\n"
-                "Some changes may require restarting the application."
-            )
-
-    def save_settings(self) -> None:
-        """Save settings and close"""
-        if self._save_to_config():
-            QMessageBox.information(
-                self,
-                "Settings Saved",
-                "Settings have been saved successfully.\n\n"
-                "Please restart DockShield for all changes to take effect."
-            )
             self.accept()
 
     def _browse_backup_dir(self) -> None:
@@ -597,3 +625,58 @@ class SettingsDialog(QDialog):
         """Handle storage type change"""
         self.remote_group.setVisible(storage_type in ["NFS", "SSH/SFTP"])
         self.s3_group.setVisible(storage_type == "AWS S3")
+
+    def _on_backup_all_toggled(self, checked: bool) -> None:
+        """Handle backup all containers toggle"""
+        self.containers_list.setEnabled(not checked)
+        self.refresh_containers_btn.setEnabled(not checked)
+
+    def _load_available_containers(self) -> None:
+        """Load available Docker containers into the list"""
+        self.containers_list.clear()
+
+        if not self.docker_manager:
+            # Try to create a temporary connection
+            try:
+                socket_url = self.config.get("docker.socket", "unix:///var/run/docker.sock")
+                timeout = self.config.get("docker.timeout", 300)
+                temp_manager = DockerManager(socket_url, timeout)
+
+                if temp_manager.is_connected():
+                    containers = temp_manager.get_containers(all_containers=True)
+                    temp_manager.close()
+                else:
+                    temp_manager.close()
+                    QMessageBox.warning(
+                        self,
+                        "Docker Connection",
+                        "Could not connect to Docker. Please check your Docker settings."
+                    )
+                    return
+            except Exception as e:
+                logger.error(f"Failed to connect to Docker: {e}")
+                QMessageBox.warning(
+                    self,
+                    "Docker Connection Error",
+                    f"Failed to load containers:\n{e}\n\nPlease check your Docker connection."
+                )
+                return
+        else:
+            try:
+                containers = self.docker_manager.get_containers(all_containers=True)
+            except Exception as e:
+                logger.error(f"Failed to get containers: {e}")
+                QMessageBox.warning(
+                    self,
+                    "Error",
+                    f"Failed to load containers:\n{e}"
+                )
+                return
+
+        # Add containers to the list with checkboxes
+        for container in containers:
+            item = QListWidgetItem(f"{container.name} ({container.status})")
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            item.setData(Qt.ItemDataRole.UserRole, container.name)  # Store container name
+            self.containers_list.addItem(item)

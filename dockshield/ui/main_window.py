@@ -4,6 +4,7 @@ Main window for DockShield
 
 import sys
 from typing import Optional, List
+from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTableWidget, QTableWidgetItem, QLabel, QGroupBox, QMessageBox,
@@ -19,10 +20,14 @@ from dockshield.core.backup_manager import BackupManager
 from dockshield.core.restore_manager import RestoreManager
 from dockshield.scheduler.scheduler import BackupScheduler
 from dockshield.utils.notifications import NotificationManager
+from dockshield.utils.translations import get_translator, tr
 from dockshield.ui.backup_dialog import BackupDialog
 from dockshield.ui.restore_dialog import RestoreDialog
 from dockshield.ui.history_dialog import HistoryDialog
 from dockshield.ui.settings_dialog import SettingsDialog
+from dockshield.ui.progress_dialog import ProgressDialog
+from dockshield.ui.backup_worker import BackupWorker
+from dockshield.ui.restore_worker import RestoreWorker
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +64,9 @@ class MainWindow(QMainWindow):
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self.refresh_containers)
 
+        # Initialize translator
+        self._init_translator()
+
         # Initialize managers
         self._init_managers()
 
@@ -73,6 +81,21 @@ class MainWindow(QMainWindow):
 
         # Initial refresh
         self.refresh_containers()
+
+    def _init_translator(self) -> None:
+        """Initialize translation system"""
+        translator = get_translator()
+
+        # Get configured language
+        language = self.config.get("ui.language", "auto")
+
+        if language == "auto":
+            # Detect system language
+            language = translator.detect_system_language()
+
+        # Set language
+        translator.set_language(language)
+        logger.info(f"Language set to: {translator.get_current_language_name()}")
 
     def _init_managers(self) -> None:
         """Initialize application managers"""
@@ -119,7 +142,7 @@ class MainWindow(QMainWindow):
         """Initialize user interface"""
         # Window properties
         window_config = self.config.get("ui.window", {})
-        self.setWindowTitle("DockShield - Docker Container Backup")
+        self.setWindowTitle(tr("app_title", "DockShield - Docker Backup Manager"))
         self.resize(
             window_config.get("width", 1200),
             window_config.get("height", 800)
@@ -183,7 +206,7 @@ class MainWindow(QMainWindow):
 
     def _create_container_list(self) -> QGroupBox:
         """Create container list widget"""
-        group = QGroupBox("Docker Containers")
+        group = QGroupBox(tr("docker_containers", "Docker Containers"))
         layout = QVBoxLayout()
 
         # Container table
@@ -209,27 +232,122 @@ class MainWindow(QMainWindow):
         """Create action buttons layout"""
         layout = QHBoxLayout()
 
+        # Container management section
+        container_label = QLabel(f"<b>{tr('container_label', 'Container:')}</b>")
+        layout.addWidget(container_label)
+
+        # Start button
+        self.start_btn = QPushButton(tr("btn_start", "▶ Start"))
+        self.start_btn.setToolTip(tr("tooltip_start", "Start selected containers"))
+        self.start_btn.clicked.connect(self.start_selected_containers)
+        self.start_btn.setEnabled(False)
+        self.start_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover:enabled {
+                background-color: #218838;
+            }
+            QPushButton:disabled {
+                background-color: #6c757d;
+                color: #adb5bd;
+            }
+        """)
+        layout.addWidget(self.start_btn)
+
+        # Stop button
+        self.stop_btn = QPushButton(tr("btn_stop", "⏹ Stop"))
+        self.stop_btn.setToolTip(tr("tooltip_stop", "Stop selected containers"))
+        self.stop_btn.clicked.connect(self.stop_selected_containers)
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover:enabled {
+                background-color: #c82333;
+            }
+            QPushButton:disabled {
+                background-color: #6c757d;
+                color: #adb5bd;
+            }
+        """)
+        layout.addWidget(self.stop_btn)
+
+        # Restart button
+        self.restart_btn = QPushButton(tr("btn_restart", "⟳ Restart"))
+        self.restart_btn.setToolTip(tr("tooltip_restart", "Restart selected containers"))
+        self.restart_btn.clicked.connect(self.restart_selected_containers)
+        self.restart_btn.setEnabled(False)
+        self.restart_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ffc107;
+                color: #212529;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover:enabled {
+                background-color: #e0a800;
+            }
+            QPushButton:disabled {
+                background-color: #6c757d;
+                color: #adb5bd;
+            }
+        """)
+        layout.addWidget(self.restart_btn)
+
+        # Separator
+        layout.addSpacing(20)
+        separator1 = QLabel("|")
+        separator1.setStyleSheet("color: #888;")
+        layout.addWidget(separator1)
+        layout.addSpacing(20)
+
+        # Backup section
+        backup_label = QLabel(f"<b>{tr('backup_label', 'Backup:')}</b>")
+        layout.addWidget(backup_label)
+
         # Backup button
-        backup_btn = QPushButton("Backup Selected")
-        backup_btn.clicked.connect(self.backup_selected_containers)
-        layout.addWidget(backup_btn)
+        self.backup_btn = QPushButton(tr("btn_backup", "💾 Backup"))
+        self.backup_btn.setToolTip(tr("tooltip_backup", "Backup selected containers"))
+        self.backup_btn.clicked.connect(self.backup_selected_containers)
+        self.backup_btn.setEnabled(False)
+        layout.addWidget(self.backup_btn)
 
         # Restore button
-        restore_btn = QPushButton("Restore from Backup")
+        restore_btn = QPushButton(tr("btn_restore", "📥 Restore"))
+        restore_btn.setToolTip(tr("tooltip_restore", "Restore container from backup"))
         restore_btn.clicked.connect(self.restore_container)
         layout.addWidget(restore_btn)
 
         # History button
-        history_btn = QPushButton("View History")
+        history_btn = QPushButton(tr("btn_history", "📜 History"))
+        history_btn.setToolTip(tr("tooltip_history", "View backup history"))
         history_btn.clicked.connect(self.show_history)
         layout.addWidget(history_btn)
 
         layout.addStretch()
 
         # Refresh button
-        refresh_btn = QPushButton("Refresh")
+        refresh_btn = QPushButton(tr("btn_refresh", "🔄 Refresh"))
+        refresh_btn.setToolTip(tr("tooltip_refresh", "Refresh container list"))
         refresh_btn.clicked.connect(self.refresh_containers)
         layout.addWidget(refresh_btn)
+
+        # Connect selection change to update button states
+        self.container_table.itemSelectionChanged.connect(self._update_button_states)
 
         return layout
 
@@ -345,39 +463,240 @@ class MainWindow(QMainWindow):
             self._perform_backup(container_names, backup_options)
 
     def _perform_backup(self, container_names: List[str], options: dict) -> None:
-        """Perform backup operation"""
+        """Perform backup operation using background worker"""
+        # Create progress dialog
+        progress_dialog = ProgressDialog(self, "Backup in Progress")
+        progress_dialog.set_operation("Preparing backup...")
+
+        # Create worker thread
+        self.backup_worker = BackupWorker(
+            self.docker_manager,
+            self.backup_manager,
+            self.notification_manager,
+            container_names,
+            options
+        )
+
+        # Connect signals
+        self.backup_worker.progress_update.connect(progress_dialog.set_progress)
+        self.backup_worker.status_update.connect(progress_dialog.set_status)
+        self.backup_worker.detail_update.connect(progress_dialog.add_detail)
+        self.backup_worker.operation_update.connect(progress_dialog.set_operation)
+        self.backup_worker.finished.connect(
+            lambda success, msg, results: self._on_backup_finished(progress_dialog, success, msg, results)
+        )
+
+        # Start worker
+        self.backup_worker.start()
+
+        # Show progress dialog (blocks until finished)
+        progress_dialog.exec()
+
+    def _on_backup_finished(self, dialog: ProgressDialog, success: bool, message: str, results: list) -> None:
+        """Handle backup completion"""
+        dialog.operation_finished(success, message)
+        self.status_label.setText("Backup completed")
+        self.refresh_containers()
+
+    def start_selected_containers(self) -> None:
+        """Start selected containers"""
+        selected_rows = self.container_table.selectionModel().selectedRows()
+
+        if not selected_rows:
+            QMessageBox.warning(self, "No Selection", "Please select containers to start")
+            return
+
+        container_names = []
+        for row in selected_rows:
+            name = self.container_table.item(row.row(), 0).text()
+            container_names.append(name)
+
+        # Confirm action
+        reply = QMessageBox.question(
+            self,
+            "Start Containers",
+            f"Start {len(container_names)} container(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Start containers
+        success_count = 0
+        failed = []
+
         for name in container_names:
             try:
                 container = self.docker_manager.get_container(name)
                 if not container:
-                    logger.error(f"Container not found: {name}")
+                    failed.append(f"{name} (not found)")
                     continue
 
-                self.status_label.setText(f"Backing up {name}...")
-                self.notification_manager.notify_backup_started(name)
+                self.status_label.setText(f"Starting {name}...")
 
-                metadata = self.backup_manager.create_backup(
-                    container=container,
-                    backup_type=options.get("backup_type", "full"),
-                    compression_level=options.get("compression_level", 6),
-                    include_logs=options.get("include_logs", True),
-                    verify=options.get("verify", True),
-                )
-
-                if metadata:
-                    size = metadata.get("size_human", "Unknown")
-                    self.notification_manager.notify_backup_completed(name, size)
-                    logger.info(f"Backup completed: {name}")
+                if self.docker_manager.start_container(container):
+                    success_count += 1
+                    logger.info(f"Container started: {name}")
                 else:
-                    self.notification_manager.notify_backup_failed(name, "Unknown error")
-                    logger.error(f"Backup failed: {name}")
+                    failed.append(f"{name} (failed to start)")
+                    logger.error(f"Failed to start container: {name}")
 
             except Exception as e:
-                logger.error(f"Error backing up {name}: {e}")
-                self.notification_manager.notify_backup_failed(name, str(e))
+                failed.append(f"{name} ({str(e)})")
+                logger.error(f"Error starting {name}: {e}")
 
-        self.status_label.setText("Backup operations completed")
-        QMessageBox.information(self, "Backup Complete", "Backup operations completed")
+        # Refresh container list
+        self.refresh_containers()
+
+        # Show result
+        message = f"Successfully started {success_count} container(s)"
+        if failed:
+            message += f"\n\nFailed:\n" + "\n".join(failed)
+            QMessageBox.warning(self, "Start Completed", message)
+        else:
+            self.status_label.setText(f"Started {success_count} container(s)")
+            QMessageBox.information(self, "Success", message)
+
+    def stop_selected_containers(self) -> None:
+        """Stop selected containers"""
+        selected_rows = self.container_table.selectionModel().selectedRows()
+
+        if not selected_rows:
+            QMessageBox.warning(self, "No Selection", "Please select containers to stop")
+            return
+
+        container_names = []
+        for row in selected_rows:
+            name = self.container_table.item(row.row(), 0).text()
+            container_names.append(name)
+
+        # Confirm action
+        reply = QMessageBox.question(
+            self,
+            "Stop Containers",
+            f"Stop {len(container_names)} container(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Stop containers
+        success_count = 0
+        failed = []
+
+        for name in container_names:
+            try:
+                container = self.docker_manager.get_container(name)
+                if not container:
+                    failed.append(f"{name} (not found)")
+                    continue
+
+                self.status_label.setText(f"Stopping {name}...")
+
+                if self.docker_manager.stop_container(container):
+                    success_count += 1
+                    logger.info(f"Container stopped: {name}")
+                else:
+                    failed.append(f"{name} (failed to stop)")
+                    logger.error(f"Failed to stop container: {name}")
+
+            except Exception as e:
+                failed.append(f"{name} ({str(e)})")
+                logger.error(f"Error stopping {name}: {e}")
+
+        # Refresh container list
+        self.refresh_containers()
+
+        # Show result
+        message = f"Successfully stopped {success_count} container(s)"
+        if failed:
+            message += f"\n\nFailed:\n" + "\n".join(failed)
+            QMessageBox.warning(self, "Stop Completed", message)
+        else:
+            self.status_label.setText(f"Stopped {success_count} container(s)")
+            QMessageBox.information(self, "Success", message)
+
+    def restart_selected_containers(self) -> None:
+        """Restart selected containers"""
+        selected_rows = self.container_table.selectionModel().selectedRows()
+
+        if not selected_rows:
+            QMessageBox.warning(self, "No Selection", "Please select containers to restart")
+            return
+
+        container_names = []
+        for row in selected_rows:
+            name = self.container_table.item(row.row(), 0).text()
+            container_names.append(name)
+
+        # Confirm action
+        reply = QMessageBox.question(
+            self,
+            "Restart Containers",
+            f"Restart {len(container_names)} container(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Restart containers (stop then start)
+        success_count = 0
+        failed = []
+
+        for name in container_names:
+            try:
+                container = self.docker_manager.get_container(name)
+                if not container:
+                    failed.append(f"{name} (not found)")
+                    continue
+
+                self.status_label.setText(f"Restarting {name}...")
+
+                # Stop first
+                if not self.docker_manager.stop_container(container):
+                    failed.append(f"{name} (failed to stop)")
+                    continue
+
+                # Then start
+                if self.docker_manager.start_container(container):
+                    success_count += 1
+                    logger.info(f"Container restarted: {name}")
+                else:
+                    failed.append(f"{name} (failed to start)")
+                    logger.error(f"Failed to restart container: {name}")
+
+            except Exception as e:
+                failed.append(f"{name} ({str(e)})")
+                logger.error(f"Error restarting {name}: {e}")
+
+        # Refresh container list
+        self.refresh_containers()
+
+        # Show result
+        message = f"Successfully restarted {success_count} container(s)"
+        if failed:
+            message += f"\n\nFailed:\n" + "\n".join(failed)
+            QMessageBox.warning(self, "Restart Completed", message)
+        else:
+            self.status_label.setText(f"Restarted {success_count} container(s)")
+            QMessageBox.information(self, "Success", message)
+
+    def _update_button_states(self) -> None:
+        """Update button states based on selection"""
+        selected_rows = self.container_table.selectionModel().selectedRows()
+        has_selection = len(selected_rows) > 0
+
+        # Enable/disable buttons based on selection
+        self.start_btn.setEnabled(has_selection)
+        self.stop_btn.setEnabled(has_selection)
+        self.restart_btn.setEnabled(has_selection)
+        self.backup_btn.setEnabled(has_selection)
 
     def restore_container(self) -> None:
         """Restore container from backup"""
@@ -387,66 +706,38 @@ class MainWindow(QMainWindow):
             self._perform_restore(restore_options)
 
     def _perform_restore(self, options: dict) -> None:
-        """Perform restore operation"""
-        container_name = options.get("container_name", "unknown")
+        """Perform restore operation using background worker"""
+        # Create progress dialog
+        progress_dialog = ProgressDialog(self, "Restore in Progress")
+        progress_dialog.set_operation("Preparing restore...")
 
-        try:
-            backup_id = options.get("backup_id")
+        # Create worker thread
+        self.restore_worker = RestoreWorker(
+            self.restore_manager,
+            self.notification_manager,
+            options
+        )
 
-            self.status_label.setText(f"Ripristino {container_name} in corso...")
-            self.notification_manager.notify_restore_started(container_name)
+        # Connect signals
+        self.restore_worker.progress_update.connect(progress_dialog.set_progress)
+        self.restore_worker.status_update.connect(progress_dialog.set_status)
+        self.restore_worker.detail_update.connect(progress_dialog.add_detail)
+        self.restore_worker.operation_update.connect(progress_dialog.set_operation)
+        self.restore_worker.finished.connect(
+            lambda success, msg: self._on_restore_finished(progress_dialog, success, msg)
+        )
 
-            # Il metodo restore_container ora ritorna (container_id, error_message)
-            container_id, error_message = self.restore_manager.restore_container(
-                backup_id=backup_id,
-                new_name=options.get("new_name"),
-                start_after_restore=options.get("start_after_restore", True),
-            )
+        # Start worker
+        self.restore_worker.start()
 
-            if container_id and not error_message:
-                # Successo
-                self.notification_manager.notify_restore_completed(container_name)
-                self.status_label.setText("Ripristino completato")
-                QMessageBox.information(
-                    self,
-                    "Ripristino Completato",
-                    f"Container ripristinato con successo!\n\n"
-                    f"ID: {container_id}\n"
-                    f"Nome: {options.get('new_name') or container_name}"
-                )
-                self.refresh_containers()
-            else:
-                # Fallimento
-                error_details = error_message or "Errore sconosciuto durante il ripristino"
-                logger.error(f"Restore failed: {error_details}")
+        # Show progress dialog (blocks until finished)
+        progress_dialog.exec()
 
-                self.notification_manager.notify_restore_failed(container_name, error_details)
-                self.status_label.setText("Ripristino fallito")
-
-                QMessageBox.critical(
-                    self,
-                    "Ripristino Fallito",
-                    f"Impossibile ripristinare il container.\n\n"
-                    f"Errore: {error_details}\n\n"
-                    f"Controlla i log per maggiori dettagli:\n"
-                    f"{self.config.get_log_file()}"
-                )
-
-        except Exception as e:
-            # Errore imprevisto
-            error_msg = f"Errore imprevisto: {str(e)}"
-            logger.error(f"Unexpected error during restore: {e}", exc_info=True)
-
-            self.notification_manager.notify_restore_failed(container_name, error_msg)
-            self.status_label.setText("Errore durante ripristino")
-
-            QMessageBox.critical(
-                self,
-                "Errore Ripristino",
-                f"Si è verificato un errore imprevisto:\n\n"
-                f"{error_msg}\n\n"
-                f"Dettagli nei log: {self.config.get_log_file()}"
-            )
+    def _on_restore_finished(self, dialog: ProgressDialog, success: bool, message: str) -> None:
+        """Handle restore completion"""
+        dialog.operation_finished(success, message)
+        self.status_label.setText("Restore completed")
+        self.refresh_containers()
 
     def show_history(self) -> None:
         """Show backup history"""
@@ -455,23 +746,11 @@ class MainWindow(QMainWindow):
 
     def show_settings(self) -> None:
         """Show settings dialog"""
-        dialog = SettingsDialog(self.config, self)
+        dialog = SettingsDialog(self.config, self, self.docker_manager)
         if dialog.exec():
-            # Settings were saved, show restart recommendation
-            reply = QMessageBox.question(
-                self,
-                "Restart Required",
-                "Some settings require a restart to take effect.\n\n"
-                "Would you like to restart DockShield now?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                # Close and restart
-                self.close()
-                import sys
-                import os
-                os.execv(sys.executable, [sys.executable] + sys.argv)
+            # Settings were saved
+            # Note: Some settings may require a restart to take effect
+            pass
 
     def show_about(self) -> None:
         """Show about dialog"""
@@ -481,7 +760,7 @@ class MainWindow(QMainWindow):
             "<h2>DockShield 0.6.0 Beta</h2>"
             "<p>Docker Container Backup and Restore for KDE Plasma</p>"
             "<p><b>This is a beta version - use with caution!</b></p>"
-            "<p>Copyright © 2024 DockShield Team</p>"
+            "<p>Copyright © 2025 Tiziano Angeli</p>"
             "<p>Licensed under GPL-3.0</p>"
         )
 
@@ -495,9 +774,9 @@ class MainWindow(QMainWindow):
 
             backup_options = {
                 "backup_type": job_config.get("backup_type", "full"),
-                "compression_level": self.config.get("general.compression_level", 6),
+                "compression_level": self.config.get("backup.compression_level", 6),
                 "include_logs": self.config.get("backup.include_logs", True),
-                "verify": self.config.get("backup.verify_backup", True),
+                "verify": self.config.get("backup.verify_integrity", True),
             }
 
             self._perform_backup(container_names, backup_options)
