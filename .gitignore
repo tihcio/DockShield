@@ -63,3 +63,9 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+
+# Flatpak build files
+_flatpak_build/
+_flatpak_repo/
+*.flatpak
+.flatpak-builder/

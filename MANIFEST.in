@@ -1,0 +1,21 @@
+# Include package metadata files
+include README.md
+include LICENSE
+include requirements.txt
+include requirements-flatpak.txt
+
+# Flatpak related files
+include com.dockshield.DockShield.yml
+include com.dockshield.DockShield.metainfo.xml
+include dockshield.desktop
+include python3-requirements.json
+include build-flatpak.sh
+include FLATPAK.md
+
+# Include all resource files
+recursive-include dockshield/resources *
+
+# Exclude compiled Python files
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude *.so

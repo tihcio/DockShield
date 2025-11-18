@@ -1,13 +1,11 @@
-#!/usr/bin/env xdg-open
 [Desktop Entry]
 Type=Application
-Version=0.6
-Name=DockShield (Beta)
+Version=1.0
+Name=DockShield
 GenericName=Docker Backup Tool
 Comment=Backup and restore Docker containers
-Icon=dockshield
-Exec=/home/tiziano/sviluppo/kde/dockshield/venv/bin/python3 -m dockshield.main
-Path=/home/tiziano/sviluppo/kde/dockshield
+Icon=com.dockshield.DockShield
+Exec=dockshield
 Terminal=false
 Categories=System;Utility;Qt;KDE;
 Keywords=docker;backup;restore;container;kde;
