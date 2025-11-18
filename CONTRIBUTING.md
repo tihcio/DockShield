@@ -128,7 +128,7 @@ pytest --cov=dockshield --cov-report=html
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/dockshield.git
+git clone https://github.com/tihcio/dockshield.git
 cd dockshield
 
 # Setup virtual environment
@@ -185,7 +185,7 @@ I maintainer del progetto hanno il diritto e la responsabilità di rimuovere, mo
 Non esitare a:
 
 - Aprire un issue di discussione
-- Contattarci via email: dev@dockshield.org
+- Contattarci via email: github.com.sappy846@passmail.net
 - Unirti alla chat della community (se disponibile)
 
 ## Licenza

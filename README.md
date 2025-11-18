@@ -452,15 +452,15 @@ A: Sì, puoi configurare pattern di esclusione nel file di configurazione.
 
 Questo progetto è rilasciato sotto licenza GPL-3.0. Vedi il file [LICENSE](LICENSE) per dettagli.
 
-## Autori
+## Autore
 
-DockShield Team
+Tiziano Angeli
 
 ## Supporto
 
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/yourusername/dockshield/issues)
-- 💬 **Discussioni**: [GitHub Discussions](https://github.com/yourusername/dockshield/discussions)
-- 📧 **Email**: support@dockshield.org
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/tihcio/dockshield/issues)
+- 💬 **Discussioni**: [GitHub Discussions](https://github.com/tihcio/dockshield/discussions)
+- 📧 **Email**: github.com.sappy846@passmail.net
 
 ## Ringraziamenti
 
