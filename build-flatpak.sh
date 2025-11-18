@@ -26,15 +26,15 @@ if ! command -v flatpak-builder &> /dev/null; then
 fi
 
 # Check if KDE runtime is installed
-if ! flatpak list --runtime | grep -q "org.kde.Platform.*6.6"; then
+if ! flatpak list --user --runtime | grep -q "org.kde.Platform.*6.6"; then
     echo "Installing required KDE runtime and SDK..."
-    flatpak install -y flathub org.kde.Platform//6.6 org.kde.Sdk//6.6
+    flatpak install --user -y flathub org.kde.Platform//6.6 org.kde.Sdk//6.6
 fi
 
 # Check if PyQt base app is installed
-if ! flatpak list | grep -q "com.riverbankcomputing.PyQt.BaseApp"; then
+if ! flatpak list --user | grep -q "com.riverbankcomputing.PyQt.BaseApp"; then
     echo "Installing required PyQt6 base app..."
-    flatpak install -y flathub com.riverbankcomputing.PyQt.BaseApp//6.6
+    flatpak install --user -y flathub com.riverbankcomputing.PyQt.BaseApp//6.6
 fi
 
 echo ""
